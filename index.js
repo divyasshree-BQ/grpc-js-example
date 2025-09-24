@@ -167,6 +167,15 @@ function listenToStream() {
       console.log('Parsed Transaction:');
       console.log('  Signature:', toBase58(message.Transaction.Signature));
       console.log('  Status:', message.Transaction.Status);
+      const instructions = message.Transaction.ParsedIdlInstructions || [];
+      console.log('  ParsedIdlInstructions count:', instructions.length);
+      instructions.forEach((ix, i) => {
+        const programAddr = ix.Program ? toBase58(ix.Program.Address) : 'unknown';
+        const programName = ix.Program?.Name || '';
+        const method = ix.Program?.Method || '';
+        const accountsCount = (ix.Accounts || []).length;
+        console.log(`    #${ix.Index} program=${programAddr} name=${programName} method=${method} accounts=${accountsCount}`);
+      });
     }
   });
   
