@@ -1,0 +1,15 @@
+server:
+  address: "corecast.bitquery.io"
+  authorization: "ory_at_"
+  insecure: false
+
+stream:
+  type: "dex_trades"
+  
+filters:
+  programs:
+    - "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4" # jupiter
+#  pool: # Market.MarketAddress
+#    - "5tUu7bX8d8Zz1v3v4Y9H9F6J7K8L9M0N1O2P3Q4R5S6T"
+#  traders: # Trade.Buy.Account / Trade.Sell.Account
+#    - "7GJz9X7b1G9Nf1d5uQq2Z3B4nPq6F8d9LmNoPQrsTUV"
