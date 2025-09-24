@@ -2,9 +2,20 @@ const grpc = require('@grpc/grpc-js');
 const protoLoader = require('@grpc/proto-loader');
 const fs = require('fs');
 const yaml = require('js-yaml');
+const bs58 = require('bs58');
 
 // Load configuration
 const config = yaml.load(fs.readFileSync('./config.yaml', 'utf8'));
+
+// Helper function to convert bytes to base58
+function toBase58(bytes) {
+  if (!bytes || bytes.length === 0) return 'undefined';
+  try {
+    return bs58.encode(bytes);
+  } catch (error) {
+    return 'invalid_address';
+  }
+}
 
 // Load proto files
 const packageDefinition = protoLoader.loadSync([
@@ -59,6 +70,12 @@ function createRequest() {
     };
   }
   
+  if (config.filters.signers && config.filters.signers.length > 0) {
+    request.signer = {
+      addresses: config.filters.signers
+    };
+  }
+  
   return request;
 }
 
@@ -101,16 +118,16 @@ function listenToStream() {
     console.log('\n=== New Message ===');
     console.log('Block Slot:', message.Block?.Slot);
     console.log('Transaction Index:', message.Transaction?.Index);
-    console.log('Transaction Signature:', message.Transaction?.Signature?.toString('hex'));
+    console.log('Transaction Signature:', toBase58(message.Transaction?.Signature));
     console.log('Transaction Status:', message.Transaction?.Status);
     
     // Handle different message types
     if (message.Trade) {
       console.log('Trade Event:');
       console.log('  Instruction Index:', message.Trade.InstructionIndex);
-      console.log('  DEX Program:', message.Trade.Dex?.ProgramAddress?.toString('hex'));
+      console.log('  DEX Program:', toBase58(message.Trade.Dex?.ProgramAddress));
       console.log('  Protocol:', message.Trade.Dex?.ProtocolName);
-      console.log('  Market:', message.Trade.Market?.MarketAddress?.toString('hex'));
+      console.log('  Market:', toBase58(message.Trade.Market?.MarketAddress));
       console.log('  Buy Amount:', message.Trade.Buy?.Amount);
       console.log('  Sell Amount:', message.Trade.Sell?.Amount);
       console.log('  Fee:', message.Trade.Fee);
@@ -119,7 +136,7 @@ function listenToStream() {
     
     if (message.Order) {
       console.log('Order Event:');
-      console.log('  Order ID:', message.Order.Order?.OrderId?.toString('hex'));
+      console.log('  Order ID:', toBase58(message.Order.Order?.OrderId));
       console.log('  Buy Side:', message.Order.Order?.BuySide);
       console.log('  Limit Price:', message.Order.Order?.LimitPrice);
       console.log('  Limit Amount:', message.Order.Order?.LimitAmount);
@@ -127,7 +144,7 @@ function listenToStream() {
     
     if (message.PoolEvent) {
       console.log('Pool Event:');
-      console.log('  Market:', message.PoolEvent.Market?.MarketAddress?.toString('hex'));
+      console.log('  Market:', toBase58(message.PoolEvent.Market?.MarketAddress));
       console.log('  Base Currency Change:', message.PoolEvent.BaseCurrency?.ChangeAmount);
       console.log('  Quote Currency Change:', message.PoolEvent.QuoteCurrency?.ChangeAmount);
     }
@@ -135,20 +152,20 @@ function listenToStream() {
     if (message.Transfer) {
       console.log('Transfer Event:');
       console.log('  Amount:', message.Transfer.Amount);
-      console.log('  From:', message.Transfer.From?.toString('hex'));
-      console.log('  To:', message.Transfer.To?.toString('hex'));
+      console.log('  From:', toBase58(message.Transfer.From));
+      console.log('  To:', toBase58(message.Transfer.To));
     }
     
     if (message.BalanceUpdate) {
       console.log('Balance Update:');
-      console.log('  Address:', message.BalanceUpdate.Address?.toString('hex'));
+      console.log('  Address:', toBase58(message.BalanceUpdate.Address));
       console.log('  Change:', message.BalanceUpdate.Change);
       console.log('  New Balance:', message.BalanceUpdate.NewBalance);
     }
     
     if (message.Transaction) {
       console.log('Parsed Transaction:');
-      console.log('  Signature:', message.Transaction.Signature?.toString('hex'));
+      console.log('  Signature:', toBase58(message.Transaction.Signature));
       console.log('  Status:', message.Transaction.Status);
     }
   });

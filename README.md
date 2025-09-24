@@ -67,10 +67,11 @@ The client will connect to the CoreCast service and start streaming data based o
 - `transfers`: Token transfer events
 - `balances`: Balance update events
 
-### Filters
+### Filters Examples
 - `programs`: Array of program addresses to filter by
 - `pool`: Array of market/pool addresses to filter by
 - `traders`: Array of trader addresses to filter by
+- `signers`: Array of signer addresses to filter by (for transactions stream)
 
 ## Example Output
 

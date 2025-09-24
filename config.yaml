@@ -4,11 +4,17 @@ server:
   insecure: false
 
 stream:
-  type: "dex_trades"
-  
+  type: "transactions"
+
+# transactions sample filter
 filters:
-  programs:
-    - "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4" # jupiter
+  signers:
+    - "ETcW7iuVraMKLMJayNCCsr9bLvKrJPDczy1CMVMPmXTc"
+  
+# dextrades sample filter
+# filters:
+#   programs:
+#     - "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4" # jupiter
 #  pool: # Market.MarketAddress
 #    - "5tUu7bX8d8Zz1v3v4Y9H9F6J7K8L9M0N1O2P3Q4R5S6T"
 #  traders: # Trade.Buy.Account / Trade.Sell.Account
