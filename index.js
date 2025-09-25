@@ -115,11 +115,11 @@ function listenToStream() {
   
   // Handle stream events
   stream.on('data', (message) => {
+    const receivedTimestamp = Date.now();    
     console.log('\n=== New Message ===');
+    console.log("Block details", message.Block);
     console.log('Block Slot:', message.Block?.Slot);
-    console.log('Transaction Index:', message.Transaction?.Index);
-    console.log('Transaction Signature:', toBase58(message.Transaction?.Signature));
-    console.log('Transaction Status:', message.Transaction?.Status);
+    console.log('Received Timestamp:', new Date(receivedTimestamp).toISOString());
     
     // Handle different message types
     if (message.Trade) {
