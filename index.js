@@ -16,8 +16,16 @@ const MAX_LOG_BUFFER_SIZE = 1000; // Prevent memory buildup
 
 // Performance optimization: Message processing stats
 let messageCount = 0;
+let totalMessageSize = 0;
+let transactionCount = 0;
+let tradeCount = 0;
+let transferCount = 0;
+let orderCount = 0;
+let poolEventCount = 0;
+let balanceUpdateCount = 0;
 let lastStatsTime = Date.now();
 const STATS_INTERVAL_MS = 30000; // Log stats every 30 seconds
+let statsInterval = null;
 
 // Load configuration
 const config = yaml.load(fs.readFileSync('./config.yaml', 'utf8'));
@@ -77,6 +85,50 @@ function flushLogs() {
     console.log(logBuffer.join('\n'));
     logBuffer = [];
   }
+}
+
+// Print performance stats
+function printStats() {
+  const now = Date.now();
+  const messagesPerSecond = messageCount > 0 ? (messageCount * 1000) / (now - lastStatsTime) : 0;
+  const avgMessageSize = messageCount > 0 ? (totalMessageSize / messageCount).toFixed(2) : 0;
+  const dataRateMBps = messageCount > 0 ? (totalMessageSize / (1024 * 1024)) / ((now - lastStatsTime) / 1000) : 0;
+  
+  const statsMessage = [
+    '\n=== Performance Stats ===',
+    `Messages processed: ${messageCount}`,
+    `Rate: ${messagesPerSecond.toFixed(2)} msg/sec`,
+    `Total data: ${(totalMessageSize / 1024).toFixed(2)} KB`,
+    `Data rate: ${dataRateMBps.toFixed(2)} MB/sec`,
+    `Avg message size: ${avgMessageSize} bytes`,
+    '',
+    'Message Types:',
+    `  Transactions: ${transactionCount}`,
+    `  Trades: ${tradeCount}`,
+    `  Orders: ${orderCount}`,
+    `  Pool Events: ${poolEventCount}`,
+    `  Transfers: ${transferCount}`,
+    `  Balance Updates: ${balanceUpdateCount}`,
+    '',
+    'System:',
+    `  Cache size: ${base58Cache.size}`,
+    `  Log buffer size: ${logBuffer.length}`,
+    `  Memory usage: ${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`,
+    `  Stream status: ${messageCount === 0 ? 'No messages received' : 'Active'}`
+  ].join('\n');
+  
+  bufferedLog(statsMessage);
+  
+  // Reset counters
+  messageCount = 0;
+  totalMessageSize = 0;
+  transactionCount = 0;
+  tradeCount = 0;
+  transferCount = 0;
+  orderCount = 0;
+  poolEventCount = 0;
+  balanceUpdateCount = 0;
+  lastStatsTime = now;
 }
 
 // Load proto files with optimized options
@@ -170,6 +222,9 @@ function listenToStream() {
   console.log('Stream type:', config.stream.type);
   console.log('Filters:', JSON.stringify(config.filters, null, 2));
   
+  // Start periodic stats reporting
+  statsInterval = setInterval(printStats, STATS_INTERVAL_MS);
+  
   const request = createRequest();
   
   // Create stream based on type
@@ -202,14 +257,10 @@ function listenToStream() {
     const receivedTimestamp = Date.now();
     messageCount++;
     
-    // Log performance stats periodically
-    const now = Date.now();
-    if (now - lastStatsTime >= STATS_INTERVAL_MS) {
-      const messagesPerSecond = (messageCount * 1000) / (now - lastStatsTime);
-      bufferedLog(`\n=== Performance Stats ===\nMessages processed: ${messageCount}\nRate: ${messagesPerSecond.toFixed(2)} msg/sec\nCache size: ${base58Cache.size}\nLog buffer size: ${logBuffer.length}`);
-      messageCount = 0;
-      lastStatsTime = now;
-    }
+    // Calculate message size efficiently (approximate)
+    const messageSize = Buffer.byteLength(JSON.stringify(message), 'utf8');
+    totalMessageSize += messageSize;
+    
     
     // Build log message efficiently
     const logLines = [
@@ -220,20 +271,22 @@ function listenToStream() {
     
     // Handle different message types efficiently
     if (message.Trade) {
-      logLines.push(
-        'Trade Event:',
-        `  Instruction Index: ${message.Trade.InstructionIndex}`,
-        `  DEX Program: ${toBase58(message.Trade.Dex?.ProgramAddress)}`,
-        `  Protocol: ${message.Trade.Dex?.ProtocolName}`,
-        `  Market: ${toBase58(message.Trade.Market?.MarketAddress)}`,
-        `  Buy Amount: ${message.Trade.Buy?.Amount}`,
-        `  Sell Amount: ${message.Trade.Sell?.Amount}`,
-        `  Fee: ${message.Trade.Fee}`,
-        `  Royalty: ${message.Trade.Royalty}`
-      );
+      tradeCount++;
+      // logLines.push(
+      //   'Trade Event:',
+      //   `  Instruction Index: ${message.Trade.InstructionIndex}`,
+      //   `  DEX Program: ${toBase58(message.Trade.Dex?.ProgramAddress)}`,
+      //   `  Protocol: ${message.Trade.Dex?.ProtocolName}`,
+      //   `  Market: ${toBase58(message.Trade.Market?.MarketAddress)}`,
+      //   `  Buy Amount: ${message.Trade.Buy?.Amount}`,
+      //   `  Sell Amount: ${message.Trade.Sell?.Amount}`,
+      //   `  Fee: ${message.Trade.Fee}`,
+      //   `  Royalty: ${message.Trade.Royalty}`
+      // );
     }
     
     if (message.Order) {
+      orderCount++;
       logLines.push(
         'Order Event:',
         `  Order ID: ${toBase58(message.Order.Order?.OrderId)}`,
@@ -244,6 +297,7 @@ function listenToStream() {
     }
     
     if (message.PoolEvent) {
+      poolEventCount++;
       logLines.push(
         'Pool Event:',
         `  Market: ${toBase58(message.PoolEvent.Market?.MarketAddress)}`,
@@ -253,6 +307,7 @@ function listenToStream() {
     }
     
     if (message.Transfer) {
+      transferCount++;
       logLines.push(
         'Transfer Event:',
         `  Amount: ${message.Transfer.Amount}`,
@@ -262,6 +317,7 @@ function listenToStream() {
     }
     
     if (message.BalanceUpdate) {
+      balanceUpdateCount++;
       logLines.push(
         'Balance Update:',
         `  Address: ${toBase58(message.BalanceUpdate.Address)}`,
@@ -271,6 +327,7 @@ function listenToStream() {
     }
     
     if (message.Transaction) {
+      transactionCount++;
       logLines.push(
         'Parsed Transaction:',
         `  Signature: ${toBase58(message.Transaction.Signature)}`,
@@ -302,6 +359,7 @@ function listenToStream() {
     console.error('Stream error:', error);
     console.error('Error details:', error.details);
     console.error('Error code:', error.code);
+    console.error('Request sent:', JSON.stringify(request, null, 2));
   });
   
   stream.on('end', () => {
@@ -321,6 +379,9 @@ process.on('SIGINT', () => {
   if (logFlushInterval) {
     clearInterval(logFlushInterval);
   }
+  if (statsInterval) {
+    clearInterval(statsInterval);
+  }
   console.log('\nShutting down gracefully...');
   process.exit(0);
 });
@@ -329,6 +390,9 @@ process.on('SIGTERM', () => {
   flushLogs();
   if (logFlushInterval) {
     clearInterval(logFlushInterval);
+  }
+  if (statsInterval) {
+    clearInterval(statsInterval);
   }
   console.log('\nShutting down gracefully...');
   process.exit(0);
