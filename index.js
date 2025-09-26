@@ -272,17 +272,17 @@ function listenToStream() {
     // Handle different message types efficiently
     if (message.Trade) {
       tradeCount++;
-      // logLines.push(
-      //   'Trade Event:',
-      //   `  Instruction Index: ${message.Trade.InstructionIndex}`,
-      //   `  DEX Program: ${toBase58(message.Trade.Dex?.ProgramAddress)}`,
-      //   `  Protocol: ${message.Trade.Dex?.ProtocolName}`,
-      //   `  Market: ${toBase58(message.Trade.Market?.MarketAddress)}`,
-      //   `  Buy Amount: ${message.Trade.Buy?.Amount}`,
-      //   `  Sell Amount: ${message.Trade.Sell?.Amount}`,
-      //   `  Fee: ${message.Trade.Fee}`,
-      //   `  Royalty: ${message.Trade.Royalty}`
-      // );
+      logLines.push(
+        'Trade Event:',
+        `  Instruction Index: ${message.Trade.InstructionIndex}`,
+        `  DEX Program: ${toBase58(message.Trade.Dex?.ProgramAddress)}`,
+        `  Protocol: ${message.Trade.Dex?.ProtocolName}`,
+        `  Market: ${toBase58(message.Trade.Market?.MarketAddress)}`,
+        `  Buy Amount: ${message.Trade.Buy?.Amount}`,
+        `  Sell Amount: ${message.Trade.Sell?.Amount}`,
+        `  Fee: ${message.Trade.Fee}`,
+        `  Royalty: ${message.Trade.Royalty}`
+      );
     }
     
     if (message.Order) {
