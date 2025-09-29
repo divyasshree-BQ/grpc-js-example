@@ -263,26 +263,26 @@ function listenToStream() {
     
     
     // Build log message efficiently
-    const logLines = [
-      '\n=== New Message ===',
-      `Block Slot: ${message.Block?.Slot}`,
-      `Received Timestamp: ${new Date(receivedTimestamp).toISOString()}`
-    ];
+    // const logLines = [
+    //   '\n=== New Message ===',
+    //   `Block Slot: ${message.Block?.Slot}`,
+    //   `Received Timestamp: ${new Date(receivedTimestamp).toISOString()}`
+    // ];
     
     // Handle different message types efficiently
     if (message.Trade) {
       tradeCount++;
-      logLines.push(
-        'Trade Event:',
-        `  Instruction Index: ${message.Trade.InstructionIndex}`,
-        `  DEX Program: ${toBase58(message.Trade.Dex?.ProgramAddress)}`,
-        `  Protocol: ${message.Trade.Dex?.ProtocolName}`,
-        `  Market: ${toBase58(message.Trade.Market?.MarketAddress)}`,
-        `  Buy Amount: ${message.Trade.Buy?.Amount}`,
-        `  Sell Amount: ${message.Trade.Sell?.Amount}`,
-        `  Fee: ${message.Trade.Fee}`,
-        `  Royalty: ${message.Trade.Royalty}`
-      );
+      // logLines.push(
+      //   'Trade Event:',
+      //   `  Instruction Index: ${message.Trade.InstructionIndex}`,
+      //   `  DEX Program: ${toBase58(message.Trade.Dex?.ProgramAddress)}`,
+      //   `  Protocol: ${message.Trade.Dex?.ProtocolName}`,
+      //   `  Market: ${toBase58(message.Trade.Market?.MarketAddress)}`,
+      //   `  Buy Amount: ${message.Trade.Buy?.Amount}`,
+      //   `  Sell Amount: ${message.Trade.Sell?.Amount}`,
+      //   `  Fee: ${message.Trade.Fee}`,
+      //   `  Royalty: ${message.Trade.Royalty}`
+      // );
     }
     
     if (message.Order) {
@@ -298,59 +298,57 @@ function listenToStream() {
     
     if (message.PoolEvent) {
       poolEventCount++;
-      logLines.push(
-        'Pool Event:',
-        `  Market: ${toBase58(message.PoolEvent.Market?.MarketAddress)}`,
-        `  Base Currency Change: ${message.PoolEvent.BaseCurrency?.ChangeAmount}`,
-        `  Quote Currency Change: ${message.PoolEvent.QuoteCurrency?.ChangeAmount}`
-      );
+      // logLines.push(
+      //   'Pool Event:',
+      //   `  Market: ${toBase58(message.PoolEvent.Market?.MarketAddress)}`,
+      //   `  Base Currency Change: ${message.PoolEvent.BaseCurrency?.ChangeAmount}`,
+      //   `  Quote Currency Change: ${message.PoolEvent.QuoteCurrency?.ChangeAmount}`
+      // );
     }
     
     if (message.Transfer) {
       transferCount++;
-      logLines.push(
-        'Transfer Event:',
-        `  Amount: ${message.Transfer.Amount}`,
-        `  From: ${toBase58(message.Transfer.From)}`,
-        `  To: ${toBase58(message.Transfer.To)}`
-      );
+      // logLines.push(
+      //   'Transfer Event:',
+      //   `  Amount: ${message.Transfer.Amount}`,
+      //   `  From: ${toBase58(message.Transfer.From)}`,
+      //   `  To: ${toBase58(message.Transfer.To)}`
+      // );
     }
     
     if (message.BalanceUpdate) {
       balanceUpdateCount++;
-      logLines.push(
-        'Balance Update:',
-        `  Address: ${toBase58(message.BalanceUpdate.Address)}`,
-        `  Change: ${message.BalanceUpdate.Change}`,
-        `  New Balance: ${message.BalanceUpdate.NewBalance}`
-      );
+      // logLines.push(
+      //   'Balance Update:',
+      //   `  Address: ${toBase58(message.BalanceUpdate.Address)}`,
+      //   `  Change: ${message.BalanceUpdate.Change}`,
+      //   `  New Balance: ${message.BalanceUpdate.NewBalance}`
+      // );
     }
     
     if (message.Transaction) {
       transactionCount++;
-      logLines.push(
-        'Parsed Transaction:',
-        `  Signature: ${toBase58(message.Transaction.Signature)}`,
-        `  Status: ${message.Transaction.Status}`
-      );
+      // logLines.push(
+      //   'Parsed Transaction:',
+      //   `  Signature: ${toBase58(message.Transaction.Signature)}`,
+      //   `  Status: ${message.Transaction.Status}`
+      // );
       
-      const instructions = message.Transaction.ParsedIdlInstructions || [];
-      logLines.push(`  ParsedIdlInstructions count: ${instructions.length}`);
       
       // Optimize instruction processing
-      const instructionDetails = instructions.map(ix => {
-        const programAddr = ix.Program ? toBase58(ix.Program.Address) : 'unknown';
-        const programName = ix.Program?.Name || '';
-        const method = ix.Program?.Method || '';
-        const accountsCount = (ix.Accounts || []).length;
-        return `    #${ix.Index} program=${programAddr} name=${programName} method=${method} accounts=${accountsCount}`;
-      });
-      
-      logLines.push(...instructionDetails);
+      // const instructionDetails = instructions.map(ix => {
+      //   const programAddr = ix.Program ? toBase58(ix.Program.Address) : 'unknown';
+      //   const programName = ix.Program?.Name || '';
+      //   const method = ix.Program?.Method || '';
+      //   const accountsCount = (ix.Accounts || []).length;
+      //   return `    #${ix.Index} program=${programAddr} name=${programName} method=${method} accounts=${accountsCount}`;
+      // });
+        
+        // logLines.push(...instructionDetails);
     }
     
     // Output all log lines at once using buffered logging
-    bufferedLog(logLines.join('\n'));
+    // bufferedLog(logLines.join('\n'));
   });
   
   stream.on('error', (error) => {
@@ -367,10 +365,10 @@ function listenToStream() {
     console.log('Stream ended');
   });
   
-  stream.on('status', (status) => {
-    // Use buffered log for status updates
-    bufferedLog(`Stream status: ${JSON.stringify(status)}`);
-  });
+  // stream.on('status', (status) => {
+  //   // Use buffered log for status updates
+  //   bufferedLog(`Stream status: ${JSON.stringify(status)}`);
+  // });
 }
 
 // Handle process termination
