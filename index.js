@@ -27,6 +27,16 @@ let lastStatsTime = Date.now();
 const STATS_INTERVAL_MS = 30000; // Log stats every 30 seconds
 let statsInterval = null;
 
+// Reconnection logic
+let currentStream = null;
+let isReconnecting = false;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+const INITIAL_RECONNECT_DELAY = 1000; // 1 second
+const MAX_RECONNECT_DELAY = 60000; // 60 seconds
+let reconnectTimeout = null;
+let connectionStartTime = Date.now();
+
 // Load configuration
 const config = yaml.load(fs.readFileSync('./config.yaml', 'utf8'));
 
@@ -87,6 +97,55 @@ function flushLogs() {
   }
 }
 
+// Clean up current stream and timers
+function cleanupStream() {
+  if (currentStream) {
+    try {
+      currentStream.cancel();
+    } catch (error) {
+      // Stream might already be closed
+    }
+    currentStream = null;
+  }
+  
+  if (reconnectTimeout) {
+    clearTimeout(reconnectTimeout);
+    reconnectTimeout = null;
+  }
+}
+
+// Calculate exponential backoff delay
+function calculateReconnectDelay(attempt) {
+  const delay = Math.min(
+    INITIAL_RECONNECT_DELAY * Math.pow(2, attempt),
+    MAX_RECONNECT_DELAY
+  );
+  // Add some jitter to prevent thundering herd
+  return delay + Math.random() * 1000;
+}
+
+// Handle reconnection logic
+function attemptReconnection() {
+  if (isReconnecting || reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      console.error(`Max reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Giving up.`);
+      process.exit(1);
+    }
+    return;
+  }
+  
+  isReconnecting = true;
+  reconnectAttempts++;
+  
+  const delay = calculateReconnectDelay(reconnectAttempts - 1);
+  console.log(`Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
+  
+  reconnectTimeout = setTimeout(() => {
+    isReconnecting = false;
+    listenToStream();
+  }, delay);
+}
+
 // Print performance stats
 function printStats() {
   const now = Date.now();
@@ -114,7 +173,9 @@ function printStats() {
     `  Cache size: ${base58Cache.size}`,
     `  Log buffer size: ${logBuffer.length}`,
     `  Memory usage: ${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`,
-    `  Stream status: ${messageCount === 0 ? 'No messages received' : 'Active'}`
+    `  Stream status: ${messageCount === 0 ? 'No messages received' : 'Active'}`,
+    `  Connection uptime: ${Math.floor((Date.now() - connectionStartTime) / 1000)}s`,
+    `  Reconnect attempts: ${reconnectAttempts}`
   ].join('\n');
   
   bufferedLog(statsMessage);
@@ -216,44 +277,58 @@ function createRequest() {
 
 // Stream listener function
 function listenToStream() {
-  // Use immediate console.log for startup messages
-  console.log('Connecting to CoreCast stream...');
-  console.log('Server:', config.server.address);
-  console.log('Stream type:', config.stream.type);
-  console.log('Filters:', JSON.stringify(config.filters, null, 2));
+  // Clean up any existing stream
+  cleanupStream();
   
-  // Start periodic stats reporting
-  statsInterval = setInterval(printStats, STATS_INTERVAL_MS);
+  // Use immediate console.log for startup messages
+  if (reconnectAttempts === 0) {
+    console.log('Connecting to CoreCast stream...');
+    console.log('Server:', config.server.address);
+    console.log('Stream type:', config.stream.type);
+    console.log('Filters:', JSON.stringify(config.filters, null, 2));
+  } else {
+    console.log(`Reconnecting to CoreCast stream... (attempt ${reconnectAttempts})`);
+  }
+  
+  // Start periodic stats reporting (only on first connection)
+  if (!statsInterval) {
+    statsInterval = setInterval(printStats, STATS_INTERVAL_MS);
+  }
   
   const request = createRequest();
   
   // Create stream based on type
-  let stream;
   switch (config.stream.type) {
     case 'dex_trades':
-      stream = client.DexTrades(request, metadata);
+      currentStream = client.DexTrades(request, metadata);
       break;
     case 'dex_orders':
-      stream = client.DexOrders(request, metadata);
+      currentStream = client.DexOrders(request, metadata);
       break;
     case 'dex_pools':
-      stream = client.DexPools(request, metadata);
+      currentStream = client.DexPools(request, metadata);
       break;
     case 'transactions':
-      stream = client.Transactions(request, metadata);
+      currentStream = client.Transactions(request, metadata);
       break;
     case 'transfers':
-      stream = client.Transfers(request, metadata);
+      currentStream = client.Transfers(request, metadata);
       break;
     case 'balances':
-      stream = client.Balances(request, metadata);
+      currentStream = client.Balances(request, metadata);
       break;
     default:
       throw new Error(`Unsupported stream type: ${config.stream.type}`);
   }
   
+  // Reset connection start time on successful connection
+  if (reconnectAttempts > 0) {
+    connectionStartTime = Date.now();
+    console.log('Successfully reconnected to stream');
+  }
+  
   // Handle stream events with optimized logging
-  stream.on('data', (message) => {
+  currentStream.on('data', (message) => {
     const receivedTimestamp = Date.now();
     messageCount++;
     
@@ -351,18 +426,32 @@ function listenToStream() {
     // bufferedLog(logLines.join('\n'));
   });
   
-  stream.on('error', (error) => {
+  currentStream.on('error', (error) => {
     // Flush any pending logs before showing error
     flushLogs();
     console.error('Stream error:', error);
     console.error('Error details:', error.details);
     console.error('Error code:', error.code);
-    console.error('Request sent:', JSON.stringify(request, null, 2));
+    
+    // Check if this is a connection drop error that we should retry
+    if (error.code === 14 || error.details === 'Connection dropped') {
+      console.log('Connection dropped detected, attempting to reconnect...');
+      attemptReconnection();
+    } else {
+      console.error('Non-recoverable error, shutting down...');
+      console.error('Request sent:', JSON.stringify(request, null, 2));
+      process.exit(1);
+    }
   });
   
-  stream.on('end', () => {
+  currentStream.on('end', () => {
     flushLogs();
     console.log('Stream ended');
+    // Attempt to reconnect when stream ends unexpectedly
+    if (!isReconnecting) {
+      console.log('Stream ended unexpectedly, attempting to reconnect...');
+      attemptReconnection();
+    }
   });
   
   // stream.on('status', (status) => {
@@ -374,6 +463,7 @@ function listenToStream() {
 // Handle process termination
 process.on('SIGINT', () => {
   flushLogs();
+  cleanupStream();
   if (logFlushInterval) {
     clearInterval(logFlushInterval);
   }
@@ -386,6 +476,7 @@ process.on('SIGINT', () => {
 
 process.on('SIGTERM', () => {
   flushLogs();
+  cleanupStream();
   if (logFlushInterval) {
     clearInterval(logFlushInterval);
   }
