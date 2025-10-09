@@ -129,7 +129,9 @@ function listenToStream() {
       console.log('  Protocol:', message.Trade.Dex?.ProtocolName);
       console.log('  Market:', toBase58(message.Trade.Market?.MarketAddress));
       console.log('  Buy Amount:', message.Trade.Buy?.Amount);
+      console.log('  Buy Account (Trader):', toBase58(message.Trade.Buy?.Account?.Address));
       console.log('  Sell Amount:', message.Trade.Sell?.Amount);
+      console.log('  Sell Account (Trader):', toBase58(message.Trade.Sell?.Account?.Address));
       console.log('  Fee:', message.Trade.Fee);
       console.log('  Royalty:', message.Trade.Royalty);
     }
