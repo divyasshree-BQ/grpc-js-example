@@ -4,8 +4,12 @@ const fs = require('fs');
 const yaml = require('js-yaml');
 const bs58 = require('bs58');
 
-// Load configuration
-const config = yaml.load(fs.readFileSync('./config.yaml', 'utf8'));
+// Global state
+let config = null;
+let client = null;
+let metadata = null;
+let currentStream = null;
+let isReloading = false;
 
 // Helper function to convert bytes to base58
 function toBase58(bytes) {
@@ -38,15 +42,34 @@ const packageDefinition = protoLoader.loadSync([
 const protoDescriptor = grpc.loadPackageDefinition(packageDefinition);
 const solanaCorecast = protoDescriptor.solana_corecast;
 
-// Create gRPC client
-const client = new solanaCorecast.CoreCast(
-  config.server.address,
-  config.server.insecure ? grpc.credentials.createInsecure() : grpc.credentials.createSsl()
-);
+// Load configuration from file
+function loadConfig() {
+  try {
+    const newConfig = yaml.load(fs.readFileSync('./config.yaml', 'utf8'));
+    console.log('✓ Configuration loaded successfully');
+    return newConfig;
+  } catch (error) {
+    console.error('✗ Failed to load configuration:', error.message);
+    return null;
+  }
+}
 
-// Create metadata with authorization
-const metadata = new grpc.Metadata();
-metadata.add('authorization', config.server.authorization);
+// Initialize gRPC client and metadata
+function initializeClient() {
+  if (!config) {
+    throw new Error('Configuration not loaded');
+  }
+  
+  client = new solanaCorecast.CoreCast(
+    config.server.address,
+    config.server.insecure ? grpc.credentials.createInsecure() : grpc.credentials.createSsl()
+  );
+  
+  metadata = new grpc.Metadata();
+  metadata.add('authorization', config.server.authorization);
+  
+  console.log('✓ gRPC client initialized');
+}
 
 // Create request based on configuration
 function createRequest() {
@@ -79,12 +102,29 @@ function createRequest() {
   return request;
 }
 
+// Stop current stream
+function stopStream() {
+  if (currentStream) {
+    try {
+      currentStream.cancel();
+      console.log('✓ Stream stopped');
+    } catch (error) {
+      console.error('Error stopping stream:', error.message);
+    }
+    currentStream = null;
+  }
+}
+
 // Stream listener function
-function listenToStream() {
-  console.log('Connecting to CoreCast stream...');
-  console.log('Server:', config.server.address);
-  console.log('Stream type:', config.stream.type);
-  console.log('Filters:', JSON.stringify(config.filters, null, 2));
+function startStream() {
+  if (!client || !config) {
+    throw new Error('Client not initialized');
+  }
+  
+  console.log('\n🚀 Connecting to CoreCast stream...');
+  console.log('   Server:', config.server.address);
+  console.log('   Stream type:', config.stream.type);
+  console.log('   Filters:', JSON.stringify(config.filters, null, 2));
   
   const request = createRequest();
   
@@ -112,6 +152,8 @@ function listenToStream() {
     default:
       throw new Error(`Unsupported stream type: ${config.stream.type}`);
   }
+  
+  currentStream = stream;
   
   // Handle stream events
   stream.on('data', (message) => {
@@ -182,34 +224,123 @@ function listenToStream() {
   });
   
   stream.on('error', (error) => {
-    console.error('Stream error:', error);
-    console.error('Error details:', error.details);
-    console.error('Error code:', error.code);
+    if (!isReloading) {
+      console.error('Stream error:', error);
+      console.error('Error details:', error.details);
+      console.error('Error code:', error.code);
+    }
   });
   
   stream.on('end', () => {
-    console.log('Stream ended');
+    if (!isReloading) {
+      console.log('Stream ended');
+    }
   });
   
   stream.on('status', (status) => {
-    console.log('Stream status:', status);
+    if (!isReloading && status.code !== 0) {
+      console.log('Stream status:', status);
+    }
   });
+  
+  console.log('✓ Stream connected and listening for data...\n');
+}
+
+// Check if server configuration changed
+function hasServerConfigChanged(oldConfig, newConfig) {
+  return oldConfig.server.address !== newConfig.server.address ||
+         oldConfig.server.authorization !== newConfig.server.authorization ||
+         oldConfig.server.insecure !== newConfig.server.insecure;
+}
+
+// Reload configuration and restart stream
+function reloadAndRestart() {
+  if (isReloading) {
+    return; // Prevent concurrent reloads
+  }
+  
+  isReloading = true;
+  console.log('\n🔄 Configuration changed, reloading...');
+  
+  // Load new configuration
+  const newConfig = loadConfig();
+  if (!newConfig) {
+    console.error('✗ Failed to reload configuration, keeping current settings');
+    isReloading = false;
+    return;
+  }
+  
+  // Check if we need to reinitialize the client
+  const needsNewClient = hasServerConfigChanged(config, newConfig);
+  
+  // Stop current stream
+  stopStream();
+  
+  // Update configuration
+  config = newConfig;
+  
+  // Reinitialize client if server settings changed
+  if (needsNewClient) {
+    console.log('Server configuration changed, reinitializing client...');
+    try {
+      initializeClient();
+    } catch (error) {
+      console.error('✗ Failed to initialize client:', error.message);
+      isReloading = false;
+      return;
+    }
+  }
+  
+  // Start new stream
+  try {
+    startStream();
+    isReloading = false;
+  } catch (error) {
+    console.error('✗ Failed to start stream:', error.message);
+    isReloading = false;
+  }
 }
 
 // Handle process termination
 process.on('SIGINT', () => {
   console.log('\nShutting down gracefully...');
+  stopStream();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
   console.log('\nShutting down gracefully...');
+  stopStream();
   process.exit(0);
 });
 
-// Start listening
+// Watch config file for changes
+let watchTimeout = null;
+fs.watch('./config.yaml', (eventType, filename) => {
+  if (eventType === 'change') {
+    // Debounce multiple rapid file changes
+    if (watchTimeout) {
+      clearTimeout(watchTimeout);
+    }
+    watchTimeout = setTimeout(() => {
+      reloadAndRestart();
+      watchTimeout = null;
+    }, 300); // Wait 300ms after last change
+  }
+});
+
+console.log('👀 Watching config.yaml for changes...');
+
+// Initial startup
 try {
-  listenToStream();
+  config = loadConfig();
+  if (!config) {
+    console.error('Failed to load configuration');
+    process.exit(1);
+  }
+  
+  initializeClient();
+  startStream();
 } catch (error) {
   console.error('Failed to start stream:', error);
   process.exit(1);
